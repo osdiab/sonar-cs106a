@@ -122,20 +122,23 @@ public class Breakout extends GraphicsProgram {
 	
 	//Variables that check the state of objects
 	private GObject collider = null;
-	private boolean startCheck = false;
 		
 	/* Method: run() */
 	/** Runs the Breakout program. */
 	public void run(){
-		setBackground(BACKGROUND_COLOR);
-		InitGrid();
-		PlaceShips();
-		InitSubmarine();
-		Intro();
-		PlayGame();
+		initBoard();
+		intro();
+		playGame();
 	}
 	
-	private void InitGrid(){
+	private void initBoard() {
+		setBackground(BACKGROUND_COLOR);
+		initGrid();
+		placeShips();
+		initSubmarine();
+	}
+
+	private void initGrid(){
 		for (int row = 1; row < HEIGHT/GRID_SPACING; row++){
 			double yPosition = row * GRID_SPACING;
 			for (int column = 1; column < WIDTH/GRID_SPACING; column ++){
@@ -152,7 +155,7 @@ public class Breakout extends GraphicsProgram {
 		}
 	}
 	
-	private void PlaceShips(){ //This function sets up the initial configuration of battleships.		
+	private void placeShips(){ //This function sets up the initial configuration of battleships.		
 		for (int row = 0; row < NSHIP_ROWS; row++){
 			for (int column = 0; column < NSHIPS_PER_ROW; column++) {
 				//Defines x and y position of each battleship laid.  The math is based on which row and which column the battleship is being placed in.
@@ -168,7 +171,7 @@ public class Breakout extends GraphicsProgram {
 		}
 	}
 	
-	public void InitSubmarine(){
+	public void initSubmarine(){
 		submarine.setSize(SUBMARINE_WIDTH, SUBMARINE_HEIGHT);
 		add(submarine);
 		
@@ -180,14 +183,14 @@ public class Breakout extends GraphicsProgram {
 	}
 	
 	//Defines aesthetic propreties of the sonar pulses, and adds them.
-	private void InitSonar(){
+	private void initSonar(){
 		sonArc.setColor(Color.CYAN);
 		add(sonArc);
 		sonArc.sendToBack();
 	}
 	
 	//Defines aesthetic properties of the bomb and the blast indicator, and adds them.
-	private void InitDepthCharge(){
+	private void initDepthCharge(){
 		bomb.setVisible(false);
 		bomb.setSize(BOMB_WIDTH, BOMB_HEIGHT);
 		add(bomb);
@@ -202,50 +205,69 @@ public class Breakout extends GraphicsProgram {
 		bombRadius.sendToBack();
 	}
 	
-	private void Intro(){
+	
+	private void intro(){
 		GLabel start = new GLabel ("CLICK TO START", 0, 0); //This is the GLabel that prompts you to start the game by clicking.
 		start.setFont(new Font("Courier New", Font.PLAIN, 40));
 		start.setColor(Color.CYAN);
 		start.setLocation ((WIDTH - start.getWidth())/2, (HEIGHT - start.getHeight())/2);
 		add(start);
-		
-		while (startCheck == false); //This is an infinite loop that only breaks when you click--thus, you must click to start.
+		waitForClick();
 		remove(start);
 	}
 	
-	private void PlayGame(){
+	private void playGame(){
 		int lives = NTURNS; //Tracks number of lives remaining.
 		boolean bombSurvive = true;
 		
-		InitBall();
-		InitSonar();
-		InitDepthCharge();
-		VelocityRandomizer();
+		initTurn();
 		
-		//This while loop terminates when all the battleships are gone, signifying that the player won.
-		while (shipNum != 0 && lives != 0){
-			scoreLabel.setLabel("Score: " + score); //This sets the score on the label beneath the submarine.
+		// This while loop terminates when all the battleships are gone, signifying that the player won.
+		while (!gameOver(lives)) {
+			setScore();
 			
-			MovementIterator();
+			moveShips();
+			moveBall();
 			
-			Sonar(); //This method emits the sonar pulses.
-			Reveal(); //This method reveals objects that are hit by sonar.
-			bombSurvive = DepthCharge(); //The function defines the motion of the bomb, and returns if the bomb killed the sub or not.
-			pause(PAUSE/2); //Pause between iterations of the code to allow for time for motion.
-			bombRadius.setFillColor(Color.BLACK); //This is placed in between the pauses to make the blast radius indicator flash.
-			pause(PAUSE/2);
+			emitSonar(); //This method emits the sonar pulses.
+			revealShips(); //This method reveals objects that are hit by sonar.
+			bombSurvive = releaseDepthCharge(); //The function defines the motion of the bomb, and returns if the bomb killed the sub or not.
+			flashBomb();
+
+			collider = getCollidingObject(); //This both detects and reacts to collisions, and identifies what the ball collided with.			
+			updatePointCounter();
 			
-			collider = getCollidingObject(); //This both detects and reacts to collisions, and identifies what the ball collided with.
-			
-			PointCounter();
-			lives = EndMessager(lives, bombSurvive);
+			lives = updateFeedback(lives, bombSurvive);
 		}
 	}
 	
-	private void MovementIterator(){
-		//This method defines the motion of the ball
+	 // This is placed in between the pauses to make the blast radius indicator flash.
+	private void flashBomb() {
+		pause(PAUSE/2); //Pause between iterations of the code to allow for time for motion.
+		bombRadius.setFillColor(Color.BLACK);
+		pause(PAUSE/2);
+	}
+
+	private void setScore() {
+		scoreLabel.setLabel("Score: " + score); //This sets the score on the label beneath the submarine.
+	}
+
+	private boolean gameOver(int lives) {
+		return shipNum == 0 || lives == 0;
+	}
+
+	private void initTurn() {
+		initBall();
+		initSonar();
+		initDepthCharge();
+		velocityRandomizer();
+	}
+
+	private void moveBall() {
 		ball.move(vx, vy);
-		
+	}
+
+	private void moveShips(){		
 		//These methods define the motion of the battleships
 		for (int shipIndex = 0; shipIndex < TOTAL_SHIPS; shipIndex++){
 			battleships[shipIndex].move(shipVx[shipIndex], 0);
@@ -253,7 +275,7 @@ public class Breakout extends GraphicsProgram {
 		}
 	}
 	
-	private void PointCounter (){
+	private void updatePointCounter (){
 		if (collider instanceof GImage && collider != submarine){
 			score = score + POINTS_SHIP;
 			remove (collider); //This removes the battleship that got hit.
@@ -262,7 +284,7 @@ public class Breakout extends GraphicsProgram {
 	}
 	
 	//This function provides feedback if you lose lives, and tells the game what to do if you do lose a life. It also tells you if you won.
-	private int EndMessager(int lives, boolean bombSurvive){
+	private int updateFeedback(int lives, boolean bombSurvive){
 		//This label gives messages like "Game Over" or "Try again" after losing a life.
 		GLabel messageLabel = new GLabel("", 0, 0);
 		messageLabel.setFont(new Font("Courier New", Font.PLAIN, 15));
@@ -280,8 +302,7 @@ public class Breakout extends GraphicsProgram {
 				messageLabel.setLocation ((WIDTH - messageLabel.getWidth())/2, (HEIGHT - messageLabel.getHeight())/2); //Centers the label.
 				add(messageLabel);
 				
-				startCheck = false;
-				while (startCheck == false); //This is an infinite loop that only ends when you click so that you can decide when to start the next ball.
+				waitForClick();
 				
 				remove(messageLabel);
 				ball.setLocation(WIDTH/2 - BALL_RADIUS, HEIGHT/2 - BALL_RADIUS); //Resets position of the ball.
@@ -300,14 +321,14 @@ public class Breakout extends GraphicsProgram {
 		return lives;
 	}
 	
-	private void InitBall(){
+	private void initBall(){
 		//These methods set the aesthetic properties of the ball.
 		ball.setFilled(true);
 		ball.setColor(Color.GRAY);
 		add(ball);
 	}
 	
-	private void VelocityRandomizer(){
+	private void velocityRandomizer(){
 		//This randomizes the x-direction of the ball & the velocity of the ships so their starting directions are not predictable.
 		if (rgen.nextBoolean(0.5)) vx = -vx; //Randomizes initial direction of the ball.
 		for (int shipIndex = 0; shipIndex < TOTAL_SHIPS; shipIndex++){ 
@@ -316,7 +337,7 @@ public class Breakout extends GraphicsProgram {
 		}
 	}
 	
-	private void Sonar(){
+	private void emitSonar(){
 		AudioClip sonarClip = MediaTools.loadAudioClip("sonarping.au"); //Sonar sound
 		
 		if (sonArc.getHeight() == 0) sonarClip.play(); //Plays when the sonar pulse is initialized
@@ -331,7 +352,7 @@ public class Breakout extends GraphicsProgram {
 		}
 	}
 	
-	private void Reveal(){
+	private void revealShips(){
 		/*This for loop iterates over all ships in the array to check if they are within a distance from the sonar pulse.
 		 * If they are, they are revealed so long as they remain within SOLAR_TOLERANCE, a set distance from the sonar signal.
 		 */
@@ -357,7 +378,7 @@ public class Breakout extends GraphicsProgram {
 		}
 	}
 	
-	private boolean DepthCharge(){
+	private boolean releaseDepthCharge(){
 		//This variable finds the absolute distance between the bomb and the submarine.
 		double bombSubDistance = (bomb.getX() - BOMB_WIDTH/2) - (submarine.getX() + SUBMARINE_WIDTH/2); 
 		if (bombSubDistance < 0) bombSubDistance = -bombSubDistance;
@@ -502,10 +523,6 @@ public class Breakout extends GraphicsProgram {
 	}
 	
 	//These are the mouse commands.
-	public void mouseClicked(MouseEvent e){
-		startCheck = true;
-	}
-	
 	public void mouseMoved(MouseEvent e){
 		submarine.setLocation(e.getX()-SUBMARINE_WIDTH/2, SUBMARINE_Y);
 		scoreLabel.setLocation(submarine.getX(), SUBMARINE_Y + 2 * SUBMARINE_HEIGHT);
