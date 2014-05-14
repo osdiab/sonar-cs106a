@@ -30,7 +30,7 @@ public class Breakout extends GraphicsProgram {
 	public static final Color GRID_COLOR = new Color(50, 100, 120);
 
 /** Space between gridlines */
-	private static final double GRID_SPACING = 25;
+	private static final double GRID_SPACING = 50;
 
 /** Dimensions of the submarine */
 	private static final int SUBMARINE_WIDTH = 75;
@@ -40,16 +40,16 @@ public class Breakout extends GraphicsProgram {
 	private static final int SUBMARINE_Y_OFFSET = 60;
 
 /** Number of battleships per row */
-	private static final int NSHIPS_PER_ROW = 4;
+	private static final int NSHIPS_PER_ROW = 2;
 
 /** Number of rows of battleships */
-	private static final int NSHIP_ROWS = 20;
+	private static final int NSHIP_ROWS = 8;
 	
 /** Total number of battleships */
 	private static final int TOTAL_SHIPS = NSHIPS_PER_ROW * NSHIP_ROWS;
 
 /** Separation between battleships */
-	private static final int SHIP_SEP = 4;
+	private static final int SHIP_SEP = 16;
 
 /** Width of a battleship */
 	private static final int SHIP_WIDTH = 45;
@@ -70,7 +70,7 @@ public class Breakout extends GraphicsProgram {
 	private static final int CHALLENGE = 7;
 
 /** Pause time */
-	private static final int PAUSE = 30;
+	private static final int PAUSE = 4;
 	
 /** Point values */
 	private static final int POINTS_SHIP = 100;
@@ -81,9 +81,6 @@ public class Breakout extends GraphicsProgram {
 /** Bomb size */
 	private static final double BOMB_HEIGHT = 50;
 	private static final double BOMB_WIDTH = 30;
-
-/** Bomb speed */
-	private static final double BOMB_SPEED = .08;
 
 /** Bomb blast radius */
 	private static final double BLAST_RADIUS = 75;
@@ -105,7 +102,7 @@ public class Breakout extends GraphicsProgram {
 	private GOval bombRadius = new GOval((bomb.getX() + BOMB_WIDTH/2) - BLAST_RADIUS, (bomb.getY() + BOMB_HEIGHT/2) - BLAST_RADIUS, 2*BLAST_RADIUS, 2*BLAST_RADIUS);
 
 	//Doubles [movement]
-	private double vy = 1.0;
+	private double vy = 2.0;
 	private double vx = rgen.nextDouble(.3, 1);
 	private double[] shipVx = new double [TOTAL_SHIPS];
 	
@@ -214,36 +211,43 @@ public class Breakout extends GraphicsProgram {
 		remove(start);
 	}
 	
+	AudioClip sonarClip = MediaTools.loadAudioClip("sonarping.au"); //Sonar sound
 	private void playGame(){
 		int lives = NTURNS; //Tracks number of lives remaining.
 		boolean bombSurvive = true;
-		
+		int curIter = 0;
 		initTurn();
+		setScore();
 		
 		// This while loop terminates when all the battleships are gone, signifying that the player won.
 		while (!gameOver(lives)) {
-			setScore();
+			if (curIter++ % 30 == 0) {
+				ShipsThread shipsThread = new ShipsThread(getWidth(), battleships, shipVx);
+				shipsThread.start();	
+			}
 			
-			moveShips();
-			moveBall();
+			if (curIter % 5 == 0) {
+				SonarThread sonarThread = new SonarThread(sonArc, getWidth(), getHeight(), sonarClip);
+				sonarThread.start();
+
+				ShipRevealerThread shipsRevealThread = new ShipRevealerThread(battleships, sonArc, bomb, bombRadius, getWidth(), getHeight());
+				shipsRevealThread.start();
+				
+				BombThread bombThread = new BombThread(bomb, bombRadius, getHeight());
+				bombThread.start();
+			}
+
+			ball.move(vx, vy);
 			
-			emitSonar(); //This method emits the sonar pulses.
-			revealShips(); //This method reveals objects that are hit by sonar.
-			bombSurvive = releaseDepthCharge(); //The function defines the motion of the bomb, and returns if the bomb killed the sub or not.
-			flashBomb();
+			bombSurvive = depthCharge(); //The function defines the motion of the bomb, and returns if the bomb killed the sub or not.
+			pause(PAUSE);
+			bombRadius.setFillColor(Color.BLACK);
 
 			collider = getCollidingObject(); //This both detects and reacts to collisions, and identifies what the ball collided with.			
 			updatePointCounter();
 			
 			lives = updateFeedback(lives, bombSurvive);
 		}
-	}
-	
-	 // This is placed in between the pauses to make the blast radius indicator flash.
-	private void flashBomb() {
-		pause(PAUSE/2); //Pause between iterations of the code to allow for time for motion.
-		bombRadius.setFillColor(Color.BLACK);
-		pause(PAUSE/2);
 	}
 
 	private void setScore() {
@@ -260,22 +264,11 @@ public class Breakout extends GraphicsProgram {
 		initDepthCharge();
 		velocityRandomizer();
 	}
-
-	private void moveBall() {
-		ball.move(vx, vy);
-	}
-
-	private void moveShips(){		
-		//These methods define the motion of the battleships
-		for (int shipIndex = 0; shipIndex < TOTAL_SHIPS; shipIndex++){
-			battleships[shipIndex].move(shipVx[shipIndex], 0);
-			if (battleships[shipIndex].getX() > getWidth() - SHIP_WIDTH || battleships[shipIndex].getX() < 0) shipVx[shipIndex] = -shipVx[shipIndex];
-		}
-	}
 	
 	private void updatePointCounter (){
 		if (collider instanceof GImage && collider != submarine){
 			score = score + POINTS_SHIP;
+			setScore();
 			remove (collider); //This removes the battleship that got hit.
 			shipNum--; //After a battleship gets hit, it is removed, so this logs the total number of battleships remaining.
 		}
@@ -283,15 +276,15 @@ public class Breakout extends GraphicsProgram {
 	
 	//This function provides feedback if you lose lives, and tells the game what to do if you do lose a life. It also tells you if you won.
 	private int updateFeedback(int lives, boolean bombSurvive){
-		//This label gives messages like "Game Over" or "Try again" after losing a life.
-		GLabel messageLabel = new GLabel("", 0, 0);
-		messageLabel.setFont(new Font("Courier New", Font.PLAIN, 15));
-		messageLabel.setColor(Color.CYAN);
-		messageLabel.setLocation ((getWidth() - messageLabel.getWidth())/2, (getHeight() - messageLabel.getHeight())/2);
-		
 		if (ball.getY() > getHeight() || bombSurvive == false){ //The condition implies the ball fell off the screen, or you were exploded.
+			setScore();
+			//This label gives messages like "Game Over" or "Try again" after losing a life.
+			GLabel messageLabel = new GLabel("", 0, 0);
+			messageLabel.setFont(new Font("Courier New", Font.PLAIN, 15));
+			messageLabel.setColor(Color.CYAN);
+			messageLabel.setLocation ((getWidth() - messageLabel.getWidth())/2, (getHeight() - messageLabel.getHeight())/2);
 			lives--;
-			ResetBombLocation();
+			resetBombLocation();
 			
 			if (lives > 0){ //i.e. when you're alive...
 				if (lives > 1) messageLabel.setLabel("Ouch!  You have " +lives + " lives left. Try again!"); //... tells # of lives left.
@@ -305,12 +298,19 @@ public class Breakout extends GraphicsProgram {
 				remove(messageLabel);
 				ball.setLocation(getWidth()/2 - BALL_RADIUS, getHeight()/2 - BALL_RADIUS); //Resets position of the ball.
 			}else{
+				setScore();
 				messageLabel.setLabel("Game Over!");
 				messageLabel.setLocation ((getWidth() - messageLabel.getWidth())/2, (getHeight() - messageLabel.getHeight())/2);
 				add(messageLabel);
 			}
 		}
 		if (shipNum == 0) {
+
+			//This label gives messages like "Game Over" or "Try again" after losing a life.
+			GLabel messageLabel = new GLabel("", 0, 0);
+			messageLabel.setFont(new Font("Courier New", Font.PLAIN, 15));
+			messageLabel.setColor(Color.CYAN);
+			messageLabel.setLocation ((getWidth() - messageLabel.getWidth())/2, (getHeight() - messageLabel.getHeight())/2);
 			messageLabel.setLabel("Congratulations! You win!");
 			messageLabel.setLocation ((getWidth() - messageLabel.getWidth())/2, (getHeight() - messageLabel.getHeight())/2);
 			add(messageLabel);
@@ -331,69 +331,16 @@ public class Breakout extends GraphicsProgram {
 		//This randomizes the x-direction of the ball & the velocity of the ships so their starting directions are not predictable.
 		if (rgen.nextBoolean(0.5)) vx = -vx; //Randomizes initial direction of the ball.
 		for (int shipIndex = 0; shipIndex < TOTAL_SHIPS; shipIndex++){ 
-			shipVx[shipIndex] = rgen.nextDouble(.1, .3) * .3; //Randomizes speed of the ships
+			shipVx[shipIndex] = rgen.nextDouble(1, 3); //Randomizes speed of the ships
 			if (rgen.nextBoolean(0.5)) shipVx[shipIndex] = -shipVx[shipIndex]; //Randomizes initial direction of the ships.
 		}
 	}
 	
-	private void emitSonar(){
-		AudioClip sonarClip = MediaTools.loadAudioClip("sonarping.au"); //Sonar sound
-		
-		if (sonArc.getHeight() == 0) sonarClip.play(); //Plays when the sonar pulse is initialized
-		
-		//This defines the propagation of the sonar pulse, which is actually a growing circle.
-		if (sonArc.getHeight() <= 2*getHeight()){ 
-			sonArc.setSize(sonArc.getWidth() + 1, sonArc.getHeight() + 1);
-			sonArc.setLocation((getWidth() - sonArc.getWidth())/2, getHeight() - sonArc.getHeight()/2);
-		}
-		if (sonArc.getHeight() == 2*getHeight()){ //If the sonar reaches the top, this reinitializes it.
-			sonArc.setSize(0, 0);
-		}
-	}
-	
-	private void revealShips(){
-		/*This for loop iterates over all ships in the array to check if they are within a distance from the sonar pulse.
-		 * If they are, they are revealed so long as they remain within SOLAR_TOLERANCE, a set distance from the sonar signal.
-		 */
-		for (int shipIndex = 0; shipIndex < TOTAL_SHIPS; shipIndex++){
-			double distanceFromSub = Distance(battleships[shipIndex].getX(), battleships[shipIndex].getY()); //Fetches the distance from the submarine.
-			double distanceFromSonar = sonArc.getHeight()/2 - distanceFromSub; //Fetches the distance from the sonar signal.
-			if (0 < distanceFromSonar && distanceFromSonar < SONAR_TOLERANCE){ //Determines if the ship shouldbe revealed
-				battleships[shipIndex].setVisible(true);
-			}
-			else battleships[shipIndex].setVisible(false);
-		}
-		
-		//The same functions as above, but changed to operate on individual objects (the bomb and the blast indicator), not an array.
-		double bombDistance = Distance(bomb.getX(), bomb.getY());
-		double bombDistFromSonar = sonArc.getHeight()/2 - bombDistance;
-		if (0 < bombDistFromSonar && bombDistFromSonar < SONAR_TOLERANCE){
-			bomb.setVisible(true);
-			bombRadius.setVisible(true);
-		}
-		else {
-			bomb.setVisible(false);
-			bombRadius.setVisible(false);
-		}
-	}
-	
-	private boolean releaseDepthCharge(){
+	AudioClip explodeClip = MediaTools.loadAudioClip("explosion.au"); //Explosion quote
+	private boolean depthCharge(){
 		//This variable finds the absolute distance between the bomb and the submarine.
 		double bombSubDistance = (bomb.getX() - BOMB_WIDTH/2) - (submarine.getX() + SUBMARINE_WIDTH/2); 
 		if (bombSubDistance < 0) bombSubDistance = -bombSubDistance;
-		
-		AudioClip explodeClip = MediaTools.loadAudioClip("explosion.au"); //Explosion quote
-		
-		//Defines the motion of the bomb & blast indicator.
-		bomb.move(0, BOMB_SPEED);
-		bombRadius.move(0, BOMB_SPEED);
-		
-		//If the bomb starts getting close to the sub, it is revealed since it is within viewing distance.
-		if (bomb.getY() >= 3 * (getHeight() - SUBMARINE_Y_OFFSET)/4) { //Y-coordinate is adjusted so the bomb doesn't fall too deep.
-			bombRadius.setVisible(true);
-			bombRadius.setFillColor(Color.RED);
-			bomb.setVisible(true);
-		}
 		
 		//This if-condition tells whether or not the bomb hit the sub when it falls all the way down.
 		if (bomb.getY() + BOMB_HEIGHT/2 >= submarine.getY()){
@@ -402,7 +349,7 @@ public class Breakout extends GraphicsProgram {
 				return false;
 			}
 			else {
-				ResetBombLocation(); //Resets so the bomb can fall again from a new location.
+				resetBombLocation(); //Resets so the bomb can fall again from a new location.
 				explodeClip.play();
 			}
 		}
@@ -410,19 +357,13 @@ public class Breakout extends GraphicsProgram {
 	}
 	
 	//Finds the bomb a new home somewhere in the playing field after it explodes.
-	private void ResetBombLocation(){
+	private void resetBombLocation(){
 		bomb.setLocation(rgen.nextDouble(.1, .9) * getWidth(), getHeight()/2);
 		bombRadius.setLocation((bomb.getX() + BOMB_WIDTH/2) - BLAST_RADIUS, (bomb.getY() + BOMB_HEIGHT/2) - BLAST_RADIUS);
 		
 		//Invisible so its position isn't immediately revealed.
 		bomb.setVisible(false);
 		bombRadius.setVisible(false);
-	}
-	
-	//Finds distances using the distance formula.
-	private double Distance(double x, double y){
-		double result = Math.sqrt(Math.pow(getWidth()/2 - x, 2) + Math.pow(getHeight() - y, 2));
-		return result;
 	}
 	
 	private GObject getCollidingObject(){
@@ -432,31 +373,29 @@ public class Breakout extends GraphicsProgram {
 		double topEdge = ball.getY();
 		double bottomEdge = ball.getY() + 2 * BALL_RADIUS;
 		
-		WallHit(); //This function tells the ball what to do if it hits a wall.
+		wallHit(); //This function tells the ball what to do if it hits a wall.
 		
 		//Each if statement covers detection from a different corner of the ball's frame.
 		if (getElementAt(leftEdge, topEdge) instanceof GImage && getElementAt(leftEdge, topEdge) != bomb){ //Top-left corner.
-			BounceMethod(leftEdge, topEdge); 
+			bounceOffShip(leftEdge, topEdge); 
 			return getElementAt(leftEdge, topEdge);
 			//These subsequent conditions are all identical to the one above, but specifying different corners of the ball's frame.
 		}else if(getElementAt(leftEdge, bottomEdge) instanceof GImage && getElementAt(leftEdge, bottomEdge) != bomb){ //Bottom-left corner
-			BounceMethod(leftEdge, bottomEdge);
+			bounceOffShip(leftEdge, bottomEdge);
 			return getElementAt(leftEdge, bottomEdge);
 		}else if (getElementAt(rightEdge, bottomEdge) instanceof GImage && getElementAt(rightEdge, bottomEdge) != bomb){ //Bottom-right corner
-			BounceMethod(rightEdge, bottomEdge);
+			bounceOffShip(rightEdge, bottomEdge);
 			return getElementAt(rightEdge, bottomEdge);
 		}else if (getElementAt(rightEdge, topEdge) instanceof GImage && getElementAt(rightEdge, topEdge) != bomb){ //Top-right corner
-			BounceMethod(rightEdge, topEdge);
+			bounceOffShip(rightEdge, topEdge);
 			return getElementAt(rightEdge, topEdge);
 		}
 		else return null;
 	}
 	
+	AudioClip wallBounceClip = MediaTools.loadAudioClip("tap.au");
 	//This function tells the ball what to do if it hits a wall.
-	private void WallHit(){
-		//Sound clip that plays when the ball hits a wall.
-		AudioClip wallBounceClip = MediaTools.loadAudioClip("tap.au");
-		
+	private void wallHit(){	
 		//Behavior when the ball hits a wall.
 		if (ball.getX() <= 0 || ball.getX() >= getWidth() - 2*BALL_RADIUS){
 			vx = -vx;
@@ -472,11 +411,10 @@ public class Breakout extends GraphicsProgram {
 	 * scoreboard or not, so that it doesn't disappear when the scoreLabel comes into
 	 * contact with the ball.
 	 */
-	private void BounceMethod(double xCollision, double yCollision){
-		//Sound effects
-		AudioClip submarineBounceClip = MediaTools.loadAudioClip("losine.au");
-		AudioClip battleshipBounceClip = MediaTools.loadAudioClip("hisine.au");
-		
+
+	AudioClip submarineBounceClip = MediaTools.loadAudioClip("losine.au");
+	AudioClip battleshipBounceClip = MediaTools.loadAudioClip("hisine.au");
+	private void bounceOffShip(double xCollision, double yCollision) {
 		//Determines what the ball hits if it touches something horizontally.
 		GObject horizontalCheck = checkHorizontalBounce();
 		
@@ -521,10 +459,149 @@ public class Breakout extends GraphicsProgram {
 		return null; //If the function returns null, then the collision was not horizontal.
 	}
 	
+	
 	//These are the mouse commands.
 	public void mouseMoved(MouseEvent e){
-		submarine.setLocation(e.getX()-SUBMARINE_WIDTH/2, submarineY());
-		scoreLabel.setLocation(submarine.getX(), submarineY() + 2 * SUBMARINE_HEIGHT);
+		submarine.setLocation(e.getX()-SUBMARINE_WIDTH/2, submarine.getY());
+		scoreLabel.setLocation(submarine.getX(), scoreLabel.getY());
+	}
+	
+	private static class ShipsThread extends Thread {
+		private double width;
+		private GImage[] battleships;
+		private double[] shipVx;
+		
+		public ShipsThread(double width, GImage[] ships, double[] shipVx) {
+			this.width = width;
+			this.battleships = ships;
+			this.shipVx = shipVx;
+		}
+		
+	    public void run() {
+			moveShips();
+	    }
+	    
+		private void moveShips(){		
+			//These methods define the motion of the battleships
+			for (int shipIndex = 0; shipIndex < TOTAL_SHIPS; shipIndex++){
+				battleships[shipIndex].move(shipVx[shipIndex], 0);
+				if (battleships[shipIndex].getX() > width - SHIP_WIDTH || battleships[shipIndex].getX() < 0) shipVx[shipIndex] = -shipVx[shipIndex];
+			}
+		}
+	}
+	
+	private static class SonarThread extends Thread {
+		private GOval sonArc;
+		private double height;
+		private double width;
+		private AudioClip sonarClip;
+		private static final double SONAR_SPEED = 10; 
+
+
+		public SonarThread(GOval sonArc, double width, double height, AudioClip sonarClip) {
+			this.sonArc = sonArc;
+			this.width = width;
+			this.height = height;
+			this.sonarClip = sonarClip;
+		}
+		
+		public void run() {
+			emitSonar(); //This method emits the sonar pulses.
+		}
+		
+		private void emitSonar(){
+			if (sonArc.getHeight() == 0) {
+				sonarClip.play(); //Plays when the sonar pulse is initialized
+			}
+			
+			//This defines the propagation of the sonar pulse, which is actually a growing circle.
+			if (sonArc.getHeight() <= 2*height){ 
+				sonArc.setSize(sonArc.getWidth() + SONAR_SPEED, sonArc.getHeight() + SONAR_SPEED);
+				sonArc.setLocation((width - sonArc.getWidth())/2, height - sonArc.getHeight()/2);
+			}
+			if (sonArc.getHeight() >= 2*height){ //If the sonar reaches the top, this reinitializes it.
+				sonArc.setSize(0, 0);
+			}
+		}
+	}
+	
+	private static class ShipRevealerThread extends Thread {
+		private GImage[] battleships;
+		private GOval sonArc;
+		private GImage bomb;
+		private GOval bombRadius;
+		private double width;
+		private double height;
+
+		public ShipRevealerThread(GImage[] ships, GOval sonArc, GImage bomb, GOval bombRadius, double width, double height) {
+			this.battleships = ships;
+			this.sonArc = sonArc;
+			this.bomb = bomb;
+			this.bombRadius = bombRadius;
+			this.width = width;
+			this.height = height;
+		}
+		
+		public void run() {
+			revealShips();
+		}
+		
+		private void revealShips() {
+			/*This for loop iterates over all ships in the array to check if they are within a distance from the sonar pulse.
+			 * If they are, they are revealed so long as they remain within SOLAR_TOLERANCE, a set distance from the sonar signal.
+			 */
+			for (int shipIndex = 0; shipIndex < TOTAL_SHIPS; shipIndex++){
+				double distanceFromSub = distance(battleships[shipIndex].getX(), battleships[shipIndex].getY()); //Fetches the distance from the submarine.
+				double distanceFromSonar = sonArc.getHeight()/2 - distanceFromSub; //Fetches the distance from the sonar signal.
+				if (0 < distanceFromSonar && distanceFromSonar < SONAR_TOLERANCE){ //Determines if the ship shouldbe revealed
+					battleships[shipIndex].setVisible(true);
+				}
+				else battleships[shipIndex].setVisible(false);
+			}
+			
+			//The same functions as above, but changed to operate on individual objects (the bomb and the blast indicator), not an array.
+			double bombDistance = distance(bomb.getX(), bomb.getY());
+			double bombDistFromSonar = sonArc.getHeight()/2 - bombDistance;
+			if (0 < bombDistFromSonar && bombDistFromSonar < SONAR_TOLERANCE){
+				bomb.setVisible(true);
+				bombRadius.setVisible(true);
+			}
+			else {
+				bomb.setVisible(false);
+				bombRadius.setVisible(false);
+			}
+		}
+
+		//Finds distances from sonar origin using the distance formula.
+		private double distance(double x, double y){
+			double result = Math.sqrt(Math.pow(width / 2- x, 2) + Math.pow(height - y, 2));
+			return result;
+		}
+	}
+	private static class BombThread extends Thread {
+		private static final double BOMB_SPEED = 1;
+		private GImage bomb;
+		private GOval bombRadius;
+		private double height;
+		public BombThread(GImage bomb, GOval bombRadius, double height) {
+			this.bomb = bomb;
+			this.bombRadius = bombRadius;
+			this.height = height;
+		}
+		
+		public void run() {
+			//Defines the motion of the bomb & blast indicator.
+			bomb.move(0, BOMB_SPEED);
+			bombRadius.move(0, BOMB_SPEED);
+			
+			//If the bomb starts getting close to the sub, it is revealed since it is within viewing distance.
+			if (bomb.getY() >= 3 * (height - SUBMARINE_Y_OFFSET)/4) { //Y-coordinate is adjusted so the bomb doesn't fall too deep.
+				bombRadius.setVisible(true);
+				bombRadius.setFillColor(Color.RED);
+				bomb.setVisible(true);
+			}
+			
+		}
 	}
 }
 
