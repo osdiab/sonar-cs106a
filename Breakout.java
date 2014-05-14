@@ -24,10 +24,6 @@ import java.awt.*;
 import java.awt.event.*;
 
 public class Breakout extends GraphicsProgram {
-
-/** Width and height of application window in pixels */
-	public static final int APPLICATION_WIDTH = 400;
-	public static final int APPLICATION_HEIGHT = 600;
 	
 /** Custom colors */
 	public static final Color BACKGROUND_COLOR = new Color(4, 20, 25);
@@ -35,10 +31,6 @@ public class Breakout extends GraphicsProgram {
 
 /** Space between gridlines */
 	private static final double GRID_SPACING = 25;
-
-/** Dimensions of game board (usually the same) */
-	private static final int WIDTH = APPLICATION_WIDTH;
-	private static final int HEIGHT = APPLICATION_HEIGHT;
 
 /** Dimensions of the submarine */
 	private static final int SUBMARINE_WIDTH = 75;
@@ -48,10 +40,10 @@ public class Breakout extends GraphicsProgram {
 	private static final int SUBMARINE_Y_OFFSET = 60;
 
 /** Number of battleships per row */
-	private static final int NSHIPS_PER_ROW = 2;
+	private static final int NSHIPS_PER_ROW = 4;
 
 /** Number of rows of battleships */
-	private static final int NSHIP_ROWS = 10;
+	private static final int NSHIP_ROWS = 20;
 	
 /** Total number of battleships */
 	private static final int TOTAL_SHIPS = NSHIPS_PER_ROW * NSHIP_ROWS;
@@ -78,13 +70,10 @@ public class Breakout extends GraphicsProgram {
 	private static final int CHALLENGE = 7;
 
 /** Pause time */
-	private static final int PAUSE = 4;
+	private static final int PAUSE = 30;
 	
 /** Point values */
 	private static final int POINTS_SHIP = 100;
-	
-/** Submarine Y Position */
-	private static final double SUBMARINE_Y = HEIGHT - SUBMARINE_Y_OFFSET - SUBMARINE_HEIGHT;
 
 /** Distance sonar has to be from battleship hits to detect their presence */
 	private static final double SONAR_TOLERANCE = 100;
@@ -107,12 +96,12 @@ public class Breakout extends GraphicsProgram {
 	private RandomGenerator rgen = RandomGenerator.getInstance();
 	
 	//GObjects
-	private GOval ball = new GOval(WIDTH/2 - BALL_RADIUS, HEIGHT/2 - BALL_RADIUS, BALL_RADIUS*2, BALL_RADIUS*2);
-	private GImage submarine = new GImage("submarine.gif", (WIDTH - SUBMARINE_WIDTH)/2, SUBMARINE_Y);
-	private GLabel scoreLabel = new GLabel("", submarine.getX(), SUBMARINE_Y + 2 * SUBMARINE_HEIGHT);	
+	private GOval ball;
+	private GImage submarine;
+	private GLabel scoreLabel;	
 	private GImage[] battleships = new GImage[TOTAL_SHIPS];
-	private GOval sonArc = new GOval(WIDTH/2, HEIGHT, 0, 0);
-	private GImage bomb = new GImage("bomb.gif", rgen.nextDouble(.1, .9) * WIDTH, HEIGHT/2);
+	private GOval sonArc = new GOval(getWidth()/2, getHeight(), 0, 0);
+	private GImage bomb = new GImage("bomb.gif", rgen.nextDouble(.1, .9) * getWidth(), getHeight()/2);
 	private GOval bombRadius = new GOval((bomb.getX() + BOMB_WIDTH/2) - BLAST_RADIUS, (bomb.getY() + BOMB_HEIGHT/2) - BLAST_RADIUS, 2*BLAST_RADIUS, 2*BLAST_RADIUS);
 
 	//Doubles [movement]
@@ -131,24 +120,33 @@ public class Breakout extends GraphicsProgram {
 		playGame();
 	}
 	
+	private double submarineY() {
+		return getHeight() - SUBMARINE_Y_OFFSET - SUBMARINE_HEIGHT;
+	}
+	
 	private void initBoard() {
 		setBackground(BACKGROUND_COLOR);
+		setSize(java.awt.Toolkit.getDefaultToolkit().getScreenSize());
+		
+		submarine = new GImage("submarine.gif", (getWidth() - SUBMARINE_WIDTH)/2, submarineY());
+		scoreLabel = new GLabel("", submarine.getX(), submarineY() + 2 * SUBMARINE_HEIGHT);
+		
 		initGrid();
 		placeShips();
 		initSubmarine();
 	}
 
 	private void initGrid(){
-		for (int row = 1; row < HEIGHT/GRID_SPACING; row++){
+		for (int row = 1; row < getHeight()/GRID_SPACING; row++){
 			double yPosition = row * GRID_SPACING;
-			for (int column = 1; column < WIDTH/GRID_SPACING; column ++){
+			for (int column = 1; column < getWidth()/GRID_SPACING; column ++){
 				double xPosition = column * GRID_SPACING;
-				GLine columnLine = new GLine (xPosition, 0, xPosition, HEIGHT);
+				GLine columnLine = new GLine (xPosition, 0, xPosition, getHeight());
 				columnLine.setColor(GRID_COLOR);
 				add(columnLine);
 				columnLine.sendToBack();
 			}
-			GLine rowLine = new GLine (0, yPosition, WIDTH, yPosition);
+			GLine rowLine = new GLine (0, yPosition, getWidth(), yPosition);
 			rowLine.setColor(GRID_COLOR);
 			add(rowLine);
 			rowLine.sendToBack();
@@ -159,14 +157,14 @@ public class Breakout extends GraphicsProgram {
 		for (int row = 0; row < NSHIP_ROWS; row++){
 			for (int column = 0; column < NSHIPS_PER_ROW; column++) {
 				//Defines x and y position of each battleship laid.  The math is based on which row and which column the battleship is being placed in.
-				double xPosition = rgen.nextDouble(0, 1) * (WIDTH - SHIP_WIDTH); //Randomizes where on the x-axis ships are located.
+				double xPosition = rgen.nextDouble(0, 1) * (getWidth() - SHIP_WIDTH); //Randomizes where on the x-axis ships are located.
 				double yPosition = SHIP_Y_OFFSET + (NSHIP_ROWS - row) * (SHIP_HEIGHT + SHIP_SEP);
 				
 				//The expression (row * 2 + column) indexes each battleship in the array from 0 to the number of ships - 1.
-				battleships[row * 2 + column] = new GImage ("battleship.gif", xPosition, yPosition);
-				battleships[row * 2 + column].setSize(SHIP_WIDTH, SHIP_HEIGHT); //Resizes the ship.
-				battleships[row * 2 + column].setVisible(false); //Invisible so their position are not given away at the start.
-				add (battleships[row * 2 + column]);
+				battleships[row * NSHIPS_PER_ROW + column] = new GImage ("battleship.gif", xPosition, yPosition);
+				battleships[row * NSHIPS_PER_ROW + column].setSize(SHIP_WIDTH, SHIP_HEIGHT); //Resizes the ship.
+				battleships[row * NSHIPS_PER_ROW + column].setVisible(false); //Invisible so their position are not given away at the start.
+				add (battleships[row * NSHIPS_PER_ROW + column]);
 			}
 		}
 	}
@@ -210,7 +208,7 @@ public class Breakout extends GraphicsProgram {
 		GLabel start = new GLabel ("CLICK TO START", 0, 0); //This is the GLabel that prompts you to start the game by clicking.
 		start.setFont(new Font("Courier New", Font.PLAIN, 40));
 		start.setColor(Color.CYAN);
-		start.setLocation ((WIDTH - start.getWidth())/2, (HEIGHT - start.getHeight())/2);
+		start.setLocation ((getWidth() - start.getWidth())/2, (getHeight() - start.getHeight())/2);
 		add(start);
 		waitForClick();
 		remove(start);
@@ -271,7 +269,7 @@ public class Breakout extends GraphicsProgram {
 		//These methods define the motion of the battleships
 		for (int shipIndex = 0; shipIndex < TOTAL_SHIPS; shipIndex++){
 			battleships[shipIndex].move(shipVx[shipIndex], 0);
-			if (battleships[shipIndex].getX() > WIDTH - SHIP_WIDTH || battleships[shipIndex].getX() < 0) shipVx[shipIndex] = -shipVx[shipIndex];
+			if (battleships[shipIndex].getX() > getWidth() - SHIP_WIDTH || battleships[shipIndex].getX() < 0) shipVx[shipIndex] = -shipVx[shipIndex];
 		}
 	}
 	
@@ -289,9 +287,9 @@ public class Breakout extends GraphicsProgram {
 		GLabel messageLabel = new GLabel("", 0, 0);
 		messageLabel.setFont(new Font("Courier New", Font.PLAIN, 15));
 		messageLabel.setColor(Color.CYAN);
-		messageLabel.setLocation ((WIDTH - messageLabel.getWidth())/2, (HEIGHT - messageLabel.getHeight())/2);
+		messageLabel.setLocation ((getWidth() - messageLabel.getWidth())/2, (getHeight() - messageLabel.getHeight())/2);
 		
-		if (ball.getY() > HEIGHT || bombSurvive == false){ //The condition implies the ball fell off the screen, or you were exploded.
+		if (ball.getY() > getHeight() || bombSurvive == false){ //The condition implies the ball fell off the screen, or you were exploded.
 			lives--;
 			ResetBombLocation();
 			
@@ -299,22 +297,22 @@ public class Breakout extends GraphicsProgram {
 				if (lives > 1) messageLabel.setLabel("Ouch!  You have " +lives + " lives left. Try again!"); //... tells # of lives left.
 				else messageLabel.setLabel("Ouch!  You have " +lives + " life left. Try again!"); //If you only have 1 life, this fixes grammar.
 				
-				messageLabel.setLocation ((WIDTH - messageLabel.getWidth())/2, (HEIGHT - messageLabel.getHeight())/2); //Centers the label.
+				messageLabel.setLocation ((getWidth() - messageLabel.getWidth())/2, (getHeight() - messageLabel.getHeight())/2); //Centers the label.
 				add(messageLabel);
 				
 				waitForClick();
 				
 				remove(messageLabel);
-				ball.setLocation(WIDTH/2 - BALL_RADIUS, HEIGHT/2 - BALL_RADIUS); //Resets position of the ball.
+				ball.setLocation(getWidth()/2 - BALL_RADIUS, getHeight()/2 - BALL_RADIUS); //Resets position of the ball.
 			}else{
 				messageLabel.setLabel("Game Over!");
-				messageLabel.setLocation ((WIDTH - messageLabel.getWidth())/2, (HEIGHT - messageLabel.getHeight())/2);
+				messageLabel.setLocation ((getWidth() - messageLabel.getWidth())/2, (getHeight() - messageLabel.getHeight())/2);
 				add(messageLabel);
 			}
 		}
 		if (shipNum == 0) {
 			messageLabel.setLabel("Congratulations! You win!");
-			messageLabel.setLocation ((WIDTH - messageLabel.getWidth())/2, (HEIGHT - messageLabel.getHeight())/2);
+			messageLabel.setLocation ((getWidth() - messageLabel.getWidth())/2, (getHeight() - messageLabel.getHeight())/2);
 			add(messageLabel);
 		}
 		
@@ -322,7 +320,8 @@ public class Breakout extends GraphicsProgram {
 	}
 	
 	private void initBall(){
-		//These methods set the aesthetic properties of the ball.
+		// These methods set the aesthetics and location of the ball.
+		ball = new GOval(getWidth() / 2 - BALL_RADIUS, getHeight() / 2 - BALL_RADIUS, BALL_RADIUS * 2, BALL_RADIUS * 2);
 		ball.setFilled(true);
 		ball.setColor(Color.GRAY);
 		add(ball);
@@ -343,11 +342,11 @@ public class Breakout extends GraphicsProgram {
 		if (sonArc.getHeight() == 0) sonarClip.play(); //Plays when the sonar pulse is initialized
 		
 		//This defines the propagation of the sonar pulse, which is actually a growing circle.
-		if (sonArc.getHeight() <= 2*HEIGHT){ 
+		if (sonArc.getHeight() <= 2*getHeight()){ 
 			sonArc.setSize(sonArc.getWidth() + 1, sonArc.getHeight() + 1);
-			sonArc.setLocation((WIDTH - sonArc.getWidth())/2, HEIGHT - sonArc.getHeight()/2);
+			sonArc.setLocation((getWidth() - sonArc.getWidth())/2, getHeight() - sonArc.getHeight()/2);
 		}
-		if (sonArc.getHeight() == 2*HEIGHT){ //If the sonar reaches the top, this reinitializes it.
+		if (sonArc.getHeight() == 2*getHeight()){ //If the sonar reaches the top, this reinitializes it.
 			sonArc.setSize(0, 0);
 		}
 	}
@@ -390,7 +389,7 @@ public class Breakout extends GraphicsProgram {
 		bombRadius.move(0, BOMB_SPEED);
 		
 		//If the bomb starts getting close to the sub, it is revealed since it is within viewing distance.
-		if (bomb.getY() >= 3 * (HEIGHT - SUBMARINE_Y_OFFSET)/4) { //Y-coordinate is adjusted so the bomb doesn't fall too deep.
+		if (bomb.getY() >= 3 * (getHeight() - SUBMARINE_Y_OFFSET)/4) { //Y-coordinate is adjusted so the bomb doesn't fall too deep.
 			bombRadius.setVisible(true);
 			bombRadius.setFillColor(Color.RED);
 			bomb.setVisible(true);
@@ -412,7 +411,7 @@ public class Breakout extends GraphicsProgram {
 	
 	//Finds the bomb a new home somewhere in the playing field after it explodes.
 	private void ResetBombLocation(){
-		bomb.setLocation(rgen.nextDouble(.1, .9) * WIDTH, HEIGHT/2);
+		bomb.setLocation(rgen.nextDouble(.1, .9) * getWidth(), getHeight()/2);
 		bombRadius.setLocation((bomb.getX() + BOMB_WIDTH/2) - BLAST_RADIUS, (bomb.getY() + BOMB_HEIGHT/2) - BLAST_RADIUS);
 		
 		//Invisible so its position isn't immediately revealed.
@@ -422,7 +421,7 @@ public class Breakout extends GraphicsProgram {
 	
 	//Finds distances using the distance formula.
 	private double Distance(double x, double y){
-		double result = Math.sqrt(Math.pow(WIDTH/2 - x, 2) + Math.pow(HEIGHT - y, 2));
+		double result = Math.sqrt(Math.pow(getWidth()/2 - x, 2) + Math.pow(getHeight() - y, 2));
 		return result;
 	}
 	
@@ -459,7 +458,7 @@ public class Breakout extends GraphicsProgram {
 		AudioClip wallBounceClip = MediaTools.loadAudioClip("tap.au");
 		
 		//Behavior when the ball hits a wall.
-		if (ball.getX() <= 0 || ball.getX() >= WIDTH - 2*BALL_RADIUS){
+		if (ball.getX() <= 0 || ball.getX() >= getWidth() - 2*BALL_RADIUS){
 			vx = -vx;
 			wallBounceClip.play();
 		}
@@ -524,8 +523,8 @@ public class Breakout extends GraphicsProgram {
 	
 	//These are the mouse commands.
 	public void mouseMoved(MouseEvent e){
-		submarine.setLocation(e.getX()-SUBMARINE_WIDTH/2, SUBMARINE_Y);
-		scoreLabel.setLocation(submarine.getX(), SUBMARINE_Y + 2 * SUBMARINE_HEIGHT);
+		submarine.setLocation(e.getX()-SUBMARINE_WIDTH/2, submarineY());
+		scoreLabel.setLocation(submarine.getX(), submarineY() + 2 * SUBMARINE_HEIGHT);
 	}
 }
 
